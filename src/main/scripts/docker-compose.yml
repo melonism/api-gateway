@@ -1,0 +1,87 @@
+version: '3'
+
+services:
+  mysqldb:
+    image: mysql
+    restart: always
+    ports:
+      - '3306:3306'
+    volumes:
+      - db_data:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: photo_app
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+      MYSQL_USER: mike
+      MYSQL_PASSWORD: mike
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: always
+    ports:
+      - "5671:5671"
+      - "5672:5672"
+      - "4369:4369"
+      - "15672:15672"
+      - "25672:25672"
+    environment:
+      RABBITMQ_DEFAULT_PASS: password
+
+  config:
+    image: mgm81/config-server
+    restart: always
+    ports:
+      - "8012:8012"
+
+  discovery:
+    image: mgm81/photo-app-discovery-service
+    restart: always
+    ports:
+      - "8010:8010"
+
+  api:
+    image: mgm81/api-gateway
+    restart: always
+    ports:
+      - "8011:8011"
+    depends_on:
+      - discovery
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  users:
+    image: mgm81/photo-app-users
+    restart: always
+    depends_on:
+      - api
+      - discovery
+      - mysqldb
+      - rabbitmq
+    environment:
+      SPRING_DATASOURCE_URL: 'jdbc:mysql://mysqldb:3306/photo_app'
+      SPRING_PROFILES_ACTIVE: 'mysql'
+      SPRING_RABBITMQ_HOST: rabbitmq
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/users-ws/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  albums:
+    image: mgm81/photo-app-api-albums
+    restart: always
+    depends_on:
+      - api
+      - discovery
+      - mysqldb
+      - rabbitmq
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+    db_data:
